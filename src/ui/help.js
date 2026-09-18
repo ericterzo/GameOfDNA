@@ -38,7 +38,7 @@ export const HELP_HTML = `
   </ul>
 
   <h3>Setup</h3>
-  <p>Pick a grid from 6×6 to 10×10. Two to four DNA symbols appear. Red and Blue then alternate placing 3 creatures each.</p>
+  <p>Pick a grid from 6×6 to 10×10. Four DNA symbols appear. Red and Blue then alternate placing 3 creatures each.</p>
   ${fig(mini(4, {
     pieces: [{ x: 1, y: 1, colour: 'red' }],
     dna: [{ x: 3, y: 0 }],
@@ -53,11 +53,11 @@ export const HELP_HTML = `
   <h3>One generation</h3>
   <ol>
     <li><b>Deaths:</b> creatures aged 6 are removed.</li>
-    <li><b>Placement:</b> each player may place one creature if they have fewer than 5 on the board. The starting player alternates each generation.</li>
+    <li><b>Placement:</b> each player may place one creature if they have fewer than 5 on the board (any number with Constant spawning on). A player who cannot place is skipped automatically. The starting player alternates each generation.</li>
     <li><b>Movement:</b> every creature takes one step, in random order.</li>
     <li><b>Breeding:</b> neighbouring creatures may produce offspring.</li>
     <li><b>Ageing:</b> every creature that existed before this generation ages by one.</li>
-    <li><b>DNA:</b> if fewer than 2 symbols remain, new ones appear.</li>
+    <li><b>DNA:</b> symbols collected this generation are replaced on random free cells, keeping four on the board while there is room.</li>
   </ol>
 
   <h3>Movement</h3>
@@ -89,6 +89,12 @@ export const HELP_HTML = `
   <p>Each colour holds at most <b>10 traits</b>. When an eleventh arrives the oldest is pushed out, which can suddenly unbalance stats that had cancelled out. Opposite traits do not cancel each other; they simply add up.</p>
   ${fig(mini(2, { dna: [{ x: 0, y: 0 }], pieces: [{ x: 1, y: 1, colour: 'purple', age: 2 }] }), '<b>Aggressive on Purple.</b> When a player gives Aggressive to Purple it targets the <b>other</b> player\'s colour, and is listed as "Aggressive vs Red" or "vs Blue". Purple is never aggressive towards Purple.')}
   <table class="trait-table">${traitRows}</table>
+
+  <h3>Options</h3>
+  <ul>
+    <li><b>Remove Aggressive trait</b> (Settings): Aggressive is never drawn from DNA, so bumps between colours always breed. Traits already assigned stay until they are pushed out.</li>
+    <li><b>Constant spawning</b> (Settings): the five-creature placement limit is lifted, so each player places one creature every generation while a legal cell exists.</li>
+  </ul>
 
   <h3>Reading the screen</h3>
   <ul>

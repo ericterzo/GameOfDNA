@@ -39,10 +39,12 @@ export const DEFAULT_CONFIG = {
   traitSlots: 10,              // max traits per colour, oldest pushed out first
   fertileAge: 2,               // fertile when age >= this at the start of a generation
   deathAge: 6,                 // removed at the start of the generation once age >= this
-  placementCap: 5,             // may place while owning fewer than this many creatures
+  placementCap: 5,             // may place while owning fewer than this many creatures; 0 = no cap ("constant spawning")
+  autoSkipPlacement: true,     // a player who cannot place is skipped without needing a Pass input
   initialPlacements: 3,        // per player during setup
-  dnaMin: 2,
-  dnaMax: 4,
+  dnaMin: 4,                   // when fewer than this remain at the end of a generation...
+  dnaMax: 4,                   // ...top up to a random count between dnaMin and dnaMax (4/4 keeps four on the board)
+  disabledTraits: [],          // trait names never drawn from DNA (e.g. ['Aggressive'])
   generationCap: 100,          // 0 means no cap
   collisionBirthChance: 100,   // % chance a non-kill collision breeds
   pairing: {
@@ -72,6 +74,7 @@ export function mergeConfig(overrides = {}) {
     cfg.traits = {};
     for (const [name, def] of Object.entries(DEFAULT_TRAITS)) cfg.traits[name] = { ...def };
   }
+  cfg.disabledTraits = [...(overrides.disabledTraits || DEFAULT_CONFIG.disabledTraits)];
   cfg.gridSize = Math.max(3, Math.floor(cfg.gridSize));
   return cfg;
 }

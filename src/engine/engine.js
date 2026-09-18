@@ -138,7 +138,7 @@ export function placementStatus(state) {
   const counts = countColours(state);
   let canPlace = true;
   let reason = null;
-  if (state.phase === 'placement' && counts[player] >= state.config.placementCap) {
+  if (state.phase === 'placement' && atPlacementCap(state, counts[player])) {
     canPlace = false;
     reason = 'cap';
   } else if (legal.length === 0) {
@@ -146,6 +146,12 @@ export function placementStatus(state) {
     reason = 'noCell';
   }
   return { player, canPlace, reason, legal, count: counts[player] };
+}
+
+// placementCap 0 means no cap ("constant spawning").
+export function atPlacementCap(state, count) {
+  const cap = state.config.placementCap;
+  return cap > 0 && count >= cap;
 }
 
 export function firstPlayerOfGeneration(state, gen) {
@@ -239,17 +245,21 @@ function handlePlacement(s, input, events) {
   const player = s.turn;
   if (input.type === 'place') {
     const counts = countColours(s);
-    if (counts[player] >= s.config.placementCap) throw new Error(`${player} already has ${counts[player]} creatures`);
+    if (atPlacementCap(s, counts[player])) throw new Error(`${player} already has ${counts[player]} creatures`);
     placeCreature(s, player, input.cell, events);
     s.counters.placements[player]++;
   } else if (input.type === 'pass') {
     const st = placementStatus(s);
-    events.push({ type: 'placementSkipped', player, reason: st.canPlace ? 'voluntary' : st.reason });
+    events.push({ type: 'placementSkipped', player, reason: st.canPlace ? 'voluntary' : st.reason, count: st.count, auto: false });
     s.counters.passes[player]++;
   } else {
     throw new Error(`Unexpected input ${input.type} during placement`);
   }
+  advanceAfterPlacement(s, player, events);
+}
 
+// Hand over to the second player, or resolve the generation once both have acted.
+function advanceAfterPlacement(s, player, events) {
   if (s.placementStep === 0) {
     s.placementStep = 1;
     s.turn = opponentOf(player);
@@ -321,7 +331,8 @@ function startGeneration(s, events) {
   enterPlacementStep(s, events);
 }
 
-// Wipe-out check when a player's placement step begins.
+// Wipe-out check when a player's placement step begins, then an automatic
+// skip when the player has nothing to do (cap reached or no legal cell).
 function enterPlacementStep(s, events) {
   const player = s.turn;
   if (isWipedOut(s, player)) {
@@ -333,6 +344,15 @@ function enterPlacementStep(s, events) {
       endGame(s, events, { winner: null, winType: 'draw', reason: 'wipeout' });
     } else {
       endGame(s, events, { winner: other, winType: 'hard', reason: 'wipeout', loser: player });
+    }
+    return;
+  }
+  if (s.config.autoSkipPlacement) {
+    const st = placementStatus(s);
+    if (!st.canPlace) {
+      events.push({ type: 'placementSkipped', player, reason: st.reason, count: st.count, auto: true });
+      s.counters.passes[player]++;
+      advanceAfterPlacement(s, player, events);
     }
   }
 }
@@ -402,7 +422,7 @@ function resolveGeneration(s, events) {
   }
   events.push({ type: 'age', ids: aged });
 
-  // 4.7 DNA top-up
+  // 4.7 DNA top-up: replace collected symbols so the board keeps dnaMin..dnaMax of them
   if (s.dna.length < cfg.dnaMin) {
     const target = randInt(s, cfg.dnaMin, cfg.dnaMax);
     spawnDna(s, target, events);
@@ -637,7 +657,9 @@ function collectDnaIfPresent(s, c, events) {
   if (idx < 0) return;
   s.dna.splice(idx, 1);
 
-  const names = Object.keys(s.config.traits);
+  const disabled = new Set(s.config.disabledTraits || []);
+  let names = Object.keys(s.config.traits).filter((t) => !disabled.has(t));
+  if (names.length === 0) names = Object.keys(s.config.traits);
   const trait = weightedPick(s, names, names.map((t) => s.config.traits[t].weight ?? 1)) || names[0];
 
   let chooser;

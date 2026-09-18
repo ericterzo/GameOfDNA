@@ -77,6 +77,10 @@ Where the spec left a choice open, the game currently does this. Each one is a c
 
 | Question | Choice |
 |---|---|
+| DNA on the board | Four symbols; any collected during a generation are replaced on random free cells at its end (`dnaMin` / `dnaMax`) |
+| A player who cannot place | Skipped automatically, with a notice (`autoSkipPlacement`) |
+| Placement cap | Five creatures, or none with the "Constant spawning" setting (`placementCap: 0`) |
+| Aggressive trait | Can be removed from the DNA pool with the "Remove Aggressive trait" setting (`disabledTraits`) |
 | Q1 Placed creatures move in the same generation | Yes |
 | Q2 Trait draw | Uniform (`traits[name].weight`) |
 | Q5 After a kill | Mover stays put (`moveIntoKilledCell: false`) |

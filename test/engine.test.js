@@ -62,14 +62,16 @@ function bot() {
 // ---------------------------------------------------------------------------
 // Setup and placement
 
-test('new game spawns 2 to 4 DNA on distinct cells', () => {
+test('new game spawns four DNA symbols on distinct cells', () => {
   for (let seed = 1; seed < 50; seed++) {
     const s = createGame({ config: { gridSize: 6 }, seed });
-    assert.ok(s.dna.length >= 2 && s.dna.length <= 4, `dna count ${s.dna.length}`);
+    assert.equal(s.dna.length, 4);
     assert.equal(new Set(s.dna).size, s.dna.length);
     assert.equal(s.phase, 'setup');
     assert.equal(s.turn, 'red');
   }
+  const s = createGame({ config: { gridSize: 6, dnaMin: 2, dnaMax: 3 }, seed: 1 });
+  assert.ok(s.dna.length >= 2 && s.dna.length <= 3);
 });
 
 test('placement legality: empty, no DNA, no orthogonal neighbour', () => {
@@ -121,6 +123,80 @@ test('placement cap: a player with 5 creatures cannot place and must pass', () =
   const r = applyInput(s, { type: 'pass' });
   assert.ok(r.events.some((e) => e.type === 'placementSkipped' && e.player === 'red' && e.reason === 'cap'));
   assert.equal(r.state.turn, 'blue');
+});
+
+function boardWithCounts({ red = 0, blue = 0, gridSize = 10, gen = 3 }) {
+  const s = createGame({ config: { gridSize }, seed: 21 });
+  s.dna = [];
+  s.phase = 'between';
+  s.gen = gen;
+  let id = 1;
+  const add = (colour, x, y) => {
+    s.creatures[id] = { id, colour, age: 1, x, y, bornGen: gen };
+    id++;
+  };
+  for (let i = 0; i < red; i++) add('red', i * 2, 0);
+  for (let i = 0; i < blue; i++) add('blue', i * 2, gridSize - 1);
+  s.nextId = id;
+  return s;
+}
+
+test('a player who cannot place is skipped automatically', () => {
+  // Gen 4 starts with red. Red is at the cap, blue is not.
+  let s = boardWithCounts({ red: 5, blue: 1 });
+  let r = applyInput(s, { type: 'nextGeneration' });
+  const skip = r.events.find((e) => e.type === 'placementSkipped');
+  assert.ok(skip && skip.player === 'red' && skip.reason === 'cap' && skip.auto === true && skip.count === 5);
+  assert.equal(r.state.phase, 'placement');
+  assert.equal(r.state.turn, 'blue');
+  assert.equal(r.state.placementStep, 1);
+  assert.equal(r.state.counters.passes.red, 1);
+
+  // Both at the cap: the whole generation resolves from the single input.
+  s = boardWithCounts({ red: 5, blue: 5 });
+  r = applyInput(s, { type: 'nextGeneration' });
+  assert.equal(r.events.filter((e) => e.type === 'placementSkipped').length, 2);
+  assert.ok(r.events.some((e) => e.type === 'movementStart'));
+  assert.ok(['between', 'dna', 'ended'].includes(r.state.phase));
+  assert.equal(r.state.gen, 4);
+
+  // With auto-skip off the engine waits for a pass.
+  s = boardWithCounts({ red: 5, blue: 1 });
+  s.config.autoSkipPlacement = false;
+  r = applyInput(s, { type: 'nextGeneration' });
+  assert.equal(r.state.turn, 'red');
+  assert.equal(placementStatus(r.state).canPlace, false);
+});
+
+test('constant spawning: placementCap 0 lifts the limit', () => {
+  const s = boardWithCounts({ red: 9, blue: 9 });
+  s.config.placementCap = 0;
+  const r = applyInput(s, { type: 'nextGeneration' });
+  assert.equal(r.state.phase, 'placement');
+  assert.equal(r.state.turn, 'red');
+  const st = placementStatus(r.state);
+  assert.equal(st.canPlace, true);
+  assert.equal(st.count, 9);
+  const r2 = applyInput(r.state, { type: 'place', cell: st.legal[0] });
+  assert.equal(countColours(r2.state).red, 10);
+});
+
+test('disabled traits are never drawn from DNA', () => {
+  let pickups = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    botState.rng = seed;
+    const { state, events } = playRandom(createGame({ config: { gridSize: 6, disabledTraits: ['Aggressive'] }, seed }), { maxGens: 60 });
+    for (const e of events) {
+      if (e.type === 'pickup') {
+        pickups++;
+        assert.notEqual(e.trait, 'Aggressive');
+      }
+    }
+    for (const colour of ['red', 'blue', 'purple']) {
+      assert.ok(state.traits[colour].every((t) => t.name !== 'Aggressive'));
+    }
+  }
+  assert.ok(pickups > 20, `only ${pickups} pickups seen`);
 });
 
 // ---------------------------------------------------------------------------
@@ -216,22 +292,26 @@ test('lone creature: fertile from its third generation, dies at the start of its
   // Remove everything but one red creature, to avoid interactions.
   const keep = Object.values(s.creatures).find((c) => c.colour === 'red');
   s.creatures = { [keep.id]: keep };
-  const ages = {};
+  // Age after each generation's ageing step, and the age at which it moved.
+  const endAges = {};
+  const moveAges = {};
   let deathGen = null;
-  const run = playRandom(s, {
+  playRandom(s, {
     maxGens: 12,
     onState: (st, ev) => {
-      if (st.creatures[keep.id]) ages[st.gen] = ages[st.gen] ?? st.creatures[keep.id].age;
+      const c = st.creatures[keep.id];
+      if (c && (st.phase === 'between' || st.phase === 'dna')) endAges[st.gen] = c.age;
       const d = ev.find((e) => e.type === 'death' && e.id === keep.id);
       if (d) deathGen = st.gen;
     },
   });
-  void run;
-  assert.equal(ages[1], 1);
-  assert.equal(ages[2], 1);
-  assert.equal(ages[3], 2);
-  assert.equal(ages[6], 5);
-  assert.equal(deathGen, 7);
+  void moveAges;
+  assert.equal(endAges[1], 1, 'stays at 1 through its first generation');
+  assert.equal(endAges[2], 2, 'fertile from the start of generation 3');
+  assert.equal(endAges[3], 3);
+  assert.equal(endAges[5], 5);
+  assert.equal(endAges[6], 6, 'reaches 6 at the end of its sixth generation');
+  assert.equal(deathGen, 7, 'removed at the start of the seventh');
 });
 
 // ---------------------------------------------------------------------------
@@ -348,9 +428,11 @@ test('random games keep every invariant and terminate', () => {
             assert.ok(!(e.parentColours[0] === 'purple' && e.parentColours[1] === 'purple'), 'purple x purple birth');
           }
         }
-        // DNA never sits under a creature and never exceeds the max after top-up.
+        // After the end-of-generation top-up the board holds four DNA symbols, or
+        // every free cell when fewer than four are free.
         if (st.phase === 'between' || st.phase === 'dna') {
-          assert.ok(st.dna.length <= st.config.dnaMax + 0 || st.dna.length <= 4);
+          const free = st.n * st.n - countColours(st).total;
+          assert.equal(st.dna.length, Math.min(st.config.dnaMax, free), `seed ${1000 + g} gen ${st.gen}: dna ${st.dna.length}, free ${free}`);
         }
       },
     });

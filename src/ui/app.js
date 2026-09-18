@@ -9,6 +9,7 @@ import {
   currentDnaChoice,
   countColours,
   opponentOf,
+  DEFAULT_CONFIG,
 } from '../engine/index.js';
 import { BoardView } from './board.js';
 import { traitsHtml, statsHtml, dnaModalHtml, endModalHtml, resultTitle } from './panels.js';
@@ -26,6 +27,8 @@ const DEFAULT_SETTINGS = {
   gridSize: 8,
   cap: true,
   statsOpen: false,
+  noAggressive: false,
+  constantSpawning: false,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -42,6 +45,42 @@ let lastTraitAdded = null;
 let playCtl = null;
 let toastTimer = null;
 let helpReturn = 'screen-menu';
+let lastSkips = [];
+
+// Rule options chosen in Settings, expressed as engine config overrides.
+function ruleConfig() {
+  return {
+    placementCap: settings.constantSpawning ? 0 : DEFAULT_CONFIG.placementCap,
+    disabledTraits: settings.noAggressive ? ['Aggressive'] : [],
+  };
+}
+
+// Rule options also apply to the match in progress.
+function applyRulesToMatch() {
+  if (!state || state.phase === 'ended') return;
+  state = { ...state, config: { ...state.config, ...ruleConfig() } };
+  saveGame();
+  if (busy || !$('#screen-match').classList.contains('active')) return;
+  renderAll();
+  if (state.phase === 'placement' || state.phase === 'setup') placementUI();
+}
+
+function bindRuleToggle(el, key) {
+  if (!el) return;
+  el.checked = settings[key];
+  el.onchange = () => {
+    settings[key] = el.checked;
+    saveSettings();
+    applyRulesToMatch();
+  };
+}
+
+function skipText(events) {
+  return events
+    .filter((e) => e.type === 'placementSkipped')
+    .map((e) => `${COLOUR_NAMES[e.player]} skipped: ${e.reason === 'cap' ? `already has ${e.count} creatures` : 'no legal cell'}`)
+    .join(' · ');
+}
 
 // ---------------------------------------------------------------------------
 // Persistence
@@ -212,6 +251,8 @@ function buildSettingsScreen() {
     settings.autoContinue = auto.checked;
     saveSettings();
   };
+  bindRuleToggle($('#no-aggressive-toggle'), 'noAggressive');
+  bindRuleToggle($('#constant-spawn-toggle'), 'constantSpawning');
 }
 
 function setSpeed(sp) {
@@ -225,8 +266,9 @@ function setSpeed(sp) {
 // Match
 
 function startMatch({ gridSize, cap, seed }) {
-  state = createGame({ config: { gridSize, generationCap: cap ? 100 : 0 }, seed });
+  state = createGame({ config: { gridSize, generationCap: cap ? 100 : 0, ...ruleConfig() }, seed });
   lastTraitAdded = null;
+  lastSkips = [];
   saveGame();
   enterMatch();
 }
@@ -376,7 +418,10 @@ function placementUI() {
     const k = state.setupPlaced[st.player] + 1;
     setBanner(`${name}: place creature ${k} of ${state.config.initialPlacements}`, { colour: st.player, sub: 'Setup · tap a glowing cell, then Confirm' });
   } else if (st.canPlace) {
-    setBanner(`${name}'s turn: place a creature`, { colour: st.player, sub: `${st.count} of ${state.config.placementCap} on the board · tap a glowing cell, then Confirm` });
+    const cap = state.config.placementCap;
+    const skipped = skipText(lastSkips.filter((e) => e.player !== st.player && e.gen === state.gen));
+    const onBoard = `${st.count}${cap > 0 ? ` of ${cap}` : ''} on the board`;
+    setBanner(`${name}'s turn: place a creature`, { colour: st.player, sub: skipped ? `${skipped} · ${onBoard}` : `${onBoard} · tap a glowing cell, then Confirm` });
   }
 
   if (!st.canPlace) {
@@ -540,8 +585,10 @@ async function submit(input) {
 
   const resolving = r.events.some((e) => e.type === 'movementStart');
   const deaths = r.events.filter((e) => e.type === 'death').length;
+  lastSkips = r.events.filter((e) => e.type === 'placementSkipped').map((e) => ({ ...e, gen: state.gen }));
   if (resolving) {
-    setBanner(`Resolving generation ${state.gen}`, { sub: 'Creatures move, breed and age' });
+    const skipped = skipText(r.events);
+    setBanner(`Resolving generation ${state.gen}`, { sub: skipped || 'Creatures move, breed and age' });
     setControls([speedGroup(true)]);
     renderTopBar({ text: 'Resolving' });
   } else if (deaths) {
@@ -575,6 +622,9 @@ function openPause() {
     <label class="row-toggle"><span>Sound</span><input type="checkbox" class="switch" id="pause-sound"></label>
     <label class="row-toggle"><span>Colour-blind shapes</span><input type="checkbox" class="switch" id="pause-shapes"></label>
     <label class="row-toggle"><span>Auto-continue to next generation</span><input type="checkbox" class="switch" id="pause-auto"></label>
+    <div class="field-label">Rules</div>
+    <label class="row-toggle"><span>Remove Aggressive trait</span><input type="checkbox" class="switch" id="pause-no-aggressive"></label>
+    <label class="row-toggle"><span>Constant spawning<br><span class="desc">Place one creature every generation, no limit</span></span><input type="checkbox" class="switch" id="pause-constant-spawn"></label>
     <div class="seed-line">${state.n}×${state.n} · seed ${state.seed}</div>
     <div class="actions">
       <button class="btn primary" data-act="resume">Resume</button>
@@ -604,6 +654,8 @@ function openPause() {
     settings.autoContinue = auto.checked;
     saveSettings();
   };
+  bindRuleToggle(m.querySelector('#pause-no-aggressive'), 'noAggressive');
+  bindRuleToggle(m.querySelector('#pause-constant-spawn'), 'constantSpawning');
   m.querySelector('[data-act="resume"]').onclick = closePause;
   m.querySelector('[data-act="help"]').onclick = () => {
     closePause();
