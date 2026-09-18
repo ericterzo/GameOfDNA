@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="24" fill="#0b0b0e"/>
+  <g fill="#1b1b22">
+    <rect x="16" y="16" width="30" height="30" rx="5"/><rect x="49" y="16" width="30" height="30" rx="5"/><rect x="82" y="16" width="30" height="30" rx="5"/>
+    <rect x="16" y="49" width="30" height="30" rx="5"/><rect x="49" y="49" width="30" height="30" rx="5"/><rect x="82" y="49" width="30" height="30" rx="5"/>
+    <rect x="16" y="82" width="30" height="30" rx="5"/><rect x="49" y="82" width="30" height="30" rx="5"/><rect x="82" y="82" width="30" height="30" rx="5"/>
+  </g>
+  <rect x="16" y="16" width="30" height="30" rx="5" fill="#ff3b3b"/>
+  <rect x="82" y="16" width="30" height="30" rx="5" fill="#3b8bff"/>
+  <rect x="49" y="49" width="30" height="30" rx="5" fill="#b04bff"/>
+  <rect x="16" y="82" width="30" height="30" rx="5" fill="#3b8bff"/>
+  <rect x="82" y="82" width="30" height="30" rx="5" fill="#ff3b3b"/>
+  <g fill="#fff" font-family="system-ui, sans-serif" font-weight="800" font-size="18" text-anchor="middle">
+    <text x="31" y="38">3</text><text x="97" y="38">2</text><text x="64" y="71">1</text><text x="31" y="104">4</text><text x="97" y="104">5</text>
+  </g>
+</svg>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#0b0b0e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Creatures">
+  <title>Creatures</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="src/ui/styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- Main menu -->
+  <section class="screen" id="screen-menu">
+    <div class="menu">
+      <div class="logo-board" aria-hidden="true">
+        <span class="r"></span><span></span><span class="b"></span>
+        <span></span><span class="p"></span><span></span>
+        <span class="b"></span><span></span><span class="r"></span>
+      </div>
+      <h1 class="logo">Creatures</h1>
+      <p class="tagline">Two players. One board. Six generations to live.</p>
+      <button class="btn primary" data-action="new">New Game (Local)</button>
+      <button class="btn" id="btn-continue" hidden>Continue</button>
+      <button class="btn" data-action="help">How to Play</button>
+      <button class="btn" data-action="settings">Settings</button>
+      <div class="version">Pass-and-play · v0.1</div>
+    </div>
+  </section>
+
+  <!-- New game -->
+  <section class="screen" id="screen-new">
+    <header class="page-head">
+      <button class="icon-btn" data-action="menu" aria-label="Back">‹</button>
+      <h2>New Game</h2>
+    </header>
+    <div class="page">
+      <div class="field">
+        <div class="field-label">Grid size</div>
+        <div class="chips" id="grid-chips"></div>
+      </div>
+      <label class="row-toggle">
+        <span>Generation cap<br><span class="desc">End the match after 100 generations</span></span>
+        <input type="checkbox" class="switch" id="cap-toggle" checked>
+      </label>
+      <details class="plain">
+        <summary>Advanced</summary>
+        <div class="field" style="margin-top:10px">
+          <div class="field-label">Seed (optional)</div>
+          <input type="text" id="seed-input" placeholder="Leave empty for a random match" autocomplete="off" autocapitalize="off">
+          <div class="desc" style="color:var(--muted);font-size:13px">The same seed and the same choices replay the same match.</div>
+        </div>
+      </details>
+      <button class="btn primary" data-action="start">Start</button>
+    </div>
+  </section>
+
+  <!-- How to play -->
+  <section class="screen" id="screen-help">
+    <header class="page-head">
+      <button class="icon-btn" id="help-back" aria-label="Back">‹</button>
+      <h2>How to Play</h2>
+    </header>
+    <div class="page" id="help-content"></div>
+  </section>
+
+  <!-- Settings -->
+  <section class="screen" id="screen-settings">
+    <header class="page-head">
+      <button class="icon-btn" data-action="menu" aria-label="Back">‹</button>
+      <h2>Settings</h2>
+    </header>
+    <div class="page settings-list">
+      <div class="field">
+        <div class="field-label">Animation speed</div>
+        <div class="chips" id="speed-chips"></div>
+      </div>
+      <label class="row-toggle">
+        <span>Sound<br><span class="desc">Short synthesised effects</span></span>
+        <input type="checkbox" class="switch" id="sound-toggle">
+      </label>
+      <label class="row-toggle">
+        <span>Colour-blind shapes<br><span class="desc">Red squares, Blue circles, Purple diamonds, plus corner marks</span></span>
+        <input type="checkbox" class="switch" id="shapes-toggle">
+      </label>
+      <label class="row-toggle">
+        <span>Auto-continue<br><span class="desc">Start the next generation without tapping</span></span>
+        <input type="checkbox" class="switch" id="auto-toggle">
+      </label>
+    </div>
+  </section>
+
+  <!-- Match -->
+  <section class="screen" id="screen-match">
+    <header class="topbar">
+      <div class="gen" id="top-gen">Setup</div>
+      <div class="turn" id="top-turn"><span class="dot"></span><span class="label"></span></div>
+      <div class="counts" id="top-counts">
+        <span class="c-red"><span class="dot red"></span><span id="cnt-red">0</span></span>
+        <span class="c-blue"><span class="dot blue"></span><span id="cnt-blue">0</span></span>
+        <span class="c-purple"><span class="dot purple"></span><span id="cnt-purple">0</span></span>
+      </div>
+      <button class="icon-btn" data-action="pause" aria-label="Menu">☰</button>
+    </header>
+    <div class="match-body">
+      <div class="board-col">
+        <div class="board-wrap" id="board-wrap">
+          <div class="board" id="board"></div>
+          <svg class="fx" id="fx" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div class="banner" id="banner"></div>
+        <div class="controls" id="controls"></div>
+      </div>
+      <aside class="side">
+        <div>
+          <div class="panel-title">Traits</div>
+          <div class="traits" id="traits"></div>
+        </div>
+        <details class="stats" id="stats-details">
+          <summary>Stats</summary>
+          <div id="stats"></div>
+        </details>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Modals -->
+  <div class="modal" id="modal-dna" hidden><div class="card"></div></div>
+  <div class="modal" id="modal-pause" hidden><div class="card"></div></div>
+  <div class="modal" id="modal-end" hidden><div class="card"></div></div>
+  <div class="modal" id="modal-confirm" hidden><div class="card"></div></div>
+
+</div>
+<script type="module" src="src/ui/app.js"></script>
+</body>
+</html>
