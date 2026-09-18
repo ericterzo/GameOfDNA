@@ -8,8 +8,11 @@ No build step, no dependencies: plain HTML, CSS and ES modules.
 
 ### On your phone via GitHub Pages
 
-1. In the repository settings, open **Pages**, choose **Deploy from a branch**, pick the branch and the `/ (root)` folder.
-2. Open the published URL on your phone. "Add to Home Screen" gives it a full-screen icon.
+A workflow (`.github/workflows/pages.yml`) publishes the game on every push. GitHub only lets a repository owner switch Pages on, so once:
+
+1. Open the repository's **Settings → Pages** and set **Source** to **GitHub Actions**.
+2. Open the **Actions** tab and re-run the "Deploy to GitHub Pages" workflow (or push any commit).
+3. The game is then live at `https://ericterzo.github.io/GameOfDNA/`. "Add to Home Screen" on your phone gives it a full-screen icon.
 
 ### On your phone via your computer
 
