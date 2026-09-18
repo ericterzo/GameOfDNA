@@ -6,22 +6,23 @@ export const COLOURS = ['red', 'blue', 'purple'];
 export const PLAYERS = ['red', 'blue'];
 export const STAT_KEYS = ['centre', 'kin', 'random', 'orthoFert', 'diagFert', 'dominance', 'aggression'];
 
-// Trait list. `stat` is the stat modified, `delta` the modifier per instance,
-// `weight` the relative draw weight when DNA is collected.
+// Trait list. `stat` is the stat modified, `sign` the direction, `group` the
+// draw group (see traitGroupWeights), `weight` the relative draw weight inside
+// its group. The size of each drawn instance is rolled from traitMagnitude.
 export const DEFAULT_TRAITS = {
-  'Social':        { stat: 'kin',        delta: 15,  weight: 1, opposite: 'Solitary' },
-  'Solitary':      { stat: 'kin',        delta: -15, weight: 1, opposite: 'Social' },
-  'Bold':          { stat: 'centre',     delta: 15,  weight: 1, opposite: 'Timid' },
-  'Timid':         { stat: 'centre',     delta: -15, weight: 1, opposite: 'Bold' },
-  'Restless':      { stat: 'random',     delta: 15,  weight: 1, opposite: 'Focused' },
-  'Focused':       { stat: 'random',     delta: -15, weight: 1, opposite: 'Restless' },
-  'Close Bond':    { stat: 'orthoFert',  delta: 15,  weight: 1, opposite: 'Cold' },
-  'Cold':          { stat: 'orthoFert',  delta: -15, weight: 1, opposite: 'Close Bond' },
-  'Wandering Eye': { stat: 'diagFert',   delta: 10,  weight: 1, opposite: 'Shy' },
-  'Shy':           { stat: 'diagFert',   delta: -10, weight: 1, opposite: 'Wandering Eye' },
-  'Dominant':      { stat: 'dominance',  delta: 15,  weight: 1, opposite: 'Recessive' },
-  'Recessive':     { stat: 'dominance',  delta: -15, weight: 1, opposite: 'Dominant' },
-  'Aggressive':    { stat: 'aggression', delta: 15,  weight: 1, opposite: null },
+  'Social':        { stat: 'kin',        sign: 1,  group: 'movement', weight: 1, opposite: 'Solitary' },
+  'Solitary':      { stat: 'kin',        sign: -1, group: 'movement', weight: 1, opposite: 'Social' },
+  'Bold':          { stat: 'centre',     sign: 1,  group: 'movement', weight: 1, opposite: 'Timid' },
+  'Timid':         { stat: 'centre',     sign: -1, group: 'movement', weight: 1, opposite: 'Bold' },
+  'Restless':      { stat: 'random',     sign: 1,  group: 'movement', weight: 1, opposite: 'Focused' },
+  'Focused':       { stat: 'random',     sign: -1, group: 'movement', weight: 1, opposite: 'Restless' },
+  'Close Bond':    { stat: 'orthoFert',  sign: 1,  group: 'breeding', weight: 1, opposite: 'Cold' },
+  'Cold':          { stat: 'orthoFert',  sign: -1, group: 'breeding', weight: 1, opposite: 'Close Bond' },
+  'Wandering Eye': { stat: 'diagFert',   sign: 1,  group: 'breeding', weight: 1, opposite: 'Shy' },
+  'Shy':           { stat: 'diagFert',   sign: -1, group: 'breeding', weight: 1, opposite: 'Wandering Eye' },
+  'Dominant':      { stat: 'dominance',  sign: 1,  group: 'breeding', weight: 1, opposite: 'Recessive' },
+  'Recessive':     { stat: 'dominance',  sign: -1, group: 'breeding', weight: 1, opposite: 'Dominant' },
+  'Aggressive':    { stat: 'aggression', sign: 1,  group: 'breeding', weight: 1, opposite: null },
 };
 
 export const DEFAULT_CONFIG = {
@@ -36,6 +37,8 @@ export const DEFAULT_CONFIG = {
     aggression: 0,
   },
   traits: DEFAULT_TRAITS,
+  traitGroupWeights: { movement: 60, breeding: 40 },  // chance of drawing from each group
+  traitMagnitude: { min: 15, max: 30 },               // size of each drawn trait instance (inclusive)
   traitSlots: 10,              // max traits per colour, oldest pushed out first
   fertileAge: 2,               // fertile when age >= this at the start of a generation
   deathAge: 6,                 // removed at the start of the generation once age >= this
@@ -45,7 +48,7 @@ export const DEFAULT_CONFIG = {
   dnaMin: 4,                   // when fewer than this remain at the end of a generation...
   dnaMax: 4,                   // ...top up to a random count between dnaMin and dnaMax (4/4 keeps four on the board)
   disabledTraits: [],          // trait names never drawn from DNA (e.g. ['Aggressive'])
-  generationCap: 100,          // 0 means no cap
+  generationCap: 25,           // 0 means no cap
   collisionBirthChance: 100,   // % chance a non-kill collision breeds
   pairing: {
     redBlue:    { red: 0,  blue: 0, purple: 100 },
@@ -67,16 +70,22 @@ export function mergeConfig(overrides = {}) {
     redPurple: { ...DEFAULT_CONFIG.pairing.redPurple, ...((overrides.pairing || {}).redPurple || {}) },
     bluePurple: { ...DEFAULT_CONFIG.pairing.bluePurple, ...((overrides.pairing || {}).bluePurple || {}) },
   };
-  if (overrides.traits) {
-    cfg.traits = {};
-    for (const [name, def] of Object.entries(overrides.traits)) cfg.traits[name] = { ...def };
-  } else {
-    cfg.traits = {};
-    for (const [name, def] of Object.entries(DEFAULT_TRAITS)) cfg.traits[name] = { ...def };
-  }
+  const traitSource = overrides.traits || DEFAULT_TRAITS;
+  cfg.traits = {};
+  for (const [name, def] of Object.entries(traitSource)) cfg.traits[name] = { ...def };
+  cfg.traitGroupWeights = { ...DEFAULT_CONFIG.traitGroupWeights, ...(overrides.traitGroupWeights || {}) };
+  cfg.traitMagnitude = { ...DEFAULT_CONFIG.traitMagnitude, ...(overrides.traitMagnitude || {}) };
   cfg.disabledTraits = [...(overrides.disabledTraits || DEFAULT_CONFIG.disabledTraits)];
   cfg.gridSize = Math.max(3, Math.floor(cfg.gridSize));
   return cfg;
+}
+
+// Size of a trait instance when none was rolled (older saves, hand-built states).
+export function traitDelta(def, config) {
+  if (!def) return 0;
+  if (def.delta !== undefined) return def.delta;
+  const min = (config && config.traitMagnitude && config.traitMagnitude.min) || 15;
+  return (def.sign ?? 1) * min;
 }
 
 export function opponentOf(player) {

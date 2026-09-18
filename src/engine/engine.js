@@ -12,7 +12,7 @@
 //   between    -> expects { type: 'nextGeneration' }
 //   ended      -> no inputs accepted
 
-import { COLOURS, PLAYERS, mergeConfig, opponentOf } from './config.js';
+import { COLOURS, PLAYERS, mergeConfig, opponentOf, traitDelta } from './config.js';
 import { randInt, pick, shuffle, chance, weightedPick, normaliseSeed } from './rng.js';
 import { computeStats, aggressionAgainst, offspringWeights, fertilityPct } from './stats.js';
 
@@ -29,7 +29,7 @@ const NEIGHBOURS8 = [
   [-1, 1],  [0, 1],  [1, 1],
 ];
 
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -298,8 +298,8 @@ function addCreature(s, colour, x, y) {
 }
 
 function addTrait(s, colour, entry, events) {
-  const trait = { name: entry.trait, gen: s.gen };
   const def = s.config.traits[entry.trait];
+  const trait = { name: entry.trait, delta: entry.delta ?? traitDelta(def, s.config), gen: s.gen };
   if (def && def.stat === 'aggression' && colour === 'purple') {
     trait.target = opponentOf(entry.chooser);
   }
@@ -657,10 +657,7 @@ function collectDnaIfPresent(s, c, events) {
   if (idx < 0) return;
   s.dna.splice(idx, 1);
 
-  const disabled = new Set(s.config.disabledTraits || []);
-  let names = Object.keys(s.config.traits).filter((t) => !disabled.has(t));
-  if (names.length === 0) names = Object.keys(s.config.traits);
-  const trait = weightedPick(s, names, names.map((t) => s.config.traits[t].weight ?? 1)) || names[0];
+  const { trait, delta } = drawTrait(s);
 
   let chooser;
   const counts = countColours(s);
@@ -676,6 +673,7 @@ function collectDnaIfPresent(s, c, events) {
   s.counters.pickups[c.colour]++;
   const entry = {
     trait,
+    delta,
     chooser,
     collector: c.colour,
     collectorId: c.id,
@@ -685,7 +683,27 @@ function collectDnaIfPresent(s, c, events) {
     reason,
   };
   s.pendingDna.push(entry);
-  events.push({ type: 'pickup', id: c.id, colour: c.colour, cell: entry.cell, trait, chooser, reason });
+  events.push({ type: 'pickup', id: c.id, colour: c.colour, cell: entry.cell, trait, delta, chooser, reason });
+}
+
+// Draw a trait: first a group by traitGroupWeights, then a trait within it by
+// weight, then the size of this instance from traitMagnitude.
+function drawTrait(s) {
+  const cfg = s.config;
+  const disabled = new Set(cfg.disabledTraits || []);
+  let pool = Object.keys(cfg.traits).filter((t) => !disabled.has(t));
+  if (pool.length === 0) pool = Object.keys(cfg.traits);
+  const groupOf = (t) => cfg.traits[t].group || 'other';
+  const groups = [...new Set(pool.map(groupOf))];
+  const gw = cfg.traitGroupWeights || {};
+  const group = weightedPick(s, groups, groups.map((g) => gw[g] ?? 1)) || groups[0];
+  const names = pool.filter((t) => groupOf(t) === group);
+  const trait = weightedPick(s, names, names.map((t) => cfg.traits[t].weight ?? 1)) || names[0];
+  const def = cfg.traits[trait];
+  const mag = cfg.traitMagnitude || { min: 15, max: 15 };
+  const size = randInt(s, Math.min(mag.min, mag.max), Math.max(mag.min, mag.max));
+  const delta = def.delta !== undefined ? def.delta : (def.sign ?? 1) * size;
+  return { trait, delta };
 }
 
 // ---------------------------------------------------------------------------

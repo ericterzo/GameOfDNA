@@ -9,13 +9,19 @@ import {
   currentDnaChoice,
   countColours,
   opponentOf,
+  mergeConfig,
+  traitDelta,
+  COLOURS,
   DEFAULT_CONFIG,
+  STATE_VERSION,
 } from '../engine/index.js';
 import { BoardView } from './board.js';
 import { traitsHtml, statsHtml, dnaModalHtml, endModalHtml, resultTitle } from './panels.js';
 import { sound } from './sound.js';
 import { HELP_HTML } from './help.js';
 import { COLOUR_NAMES } from './traitInfo.js';
+import { COACH, summariseResolution } from './tutorial.js';
+import { buildTutorialState, TUTORIAL_RED_CELL, TUTORIAL_BLUE_CELL } from '../tutorial/scenario.js';
 
 const SAVE_KEY = 'creatures.save.v1';
 const SETTINGS_KEY = 'creatures.settings.v1';
@@ -29,6 +35,7 @@ const DEFAULT_SETTINGS = {
   statsOpen: false,
   noAggressive: false,
   constantSpawning: false,
+  generationCap: 25,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -46,18 +53,27 @@ let playCtl = null;
 let toastTimer = null;
 let helpReturn = 'screen-menu';
 let lastSkips = [];
+let lastEvents = [];
+let tutorial = null; // { step } while the tutorial is running
+
+function clampCap(v) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_SETTINGS.generationCap;
+  return Math.min(999, n);
+}
 
 // Rule options chosen in Settings, expressed as engine config overrides.
 function ruleConfig() {
   return {
     placementCap: settings.constantSpawning ? 0 : DEFAULT_CONFIG.placementCap,
     disabledTraits: settings.noAggressive ? ['Aggressive'] : [],
+    generationCap: settings.cap ? clampCap(settings.generationCap) : 0,
   };
 }
 
 // Rule options also apply to the match in progress.
 function applyRulesToMatch() {
-  if (!state || state.phase === 'ended') return;
+  if (!state || state.phase === 'ended' || tutorial) return;
   state = { ...state, config: { ...state.config, ...ruleConfig() } };
   saveGame();
   if (busy || !$('#screen-match').classList.contains('active')) return;
@@ -102,6 +118,7 @@ function saveSettings() {
 }
 
 function saveGame() {
+  if (tutorial) return; // the tutorial board never replaces a real match
   try {
     if (state) localStorage.setItem(SAVE_KEY, JSON.stringify(state));
   } catch {
@@ -113,12 +130,37 @@ function loadGame() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
-    const s = JSON.parse(raw);
-    if (!s || s.version !== 1 || !s.creatures) return null;
-    return s;
+    return migrateState(JSON.parse(raw));
   } catch {
     return null;
   }
+}
+
+// Brings a saved match from an older state version up to date, or returns
+// null when it cannot be used.
+function migrateState(s) {
+  if (!s || typeof s !== 'object' || !s.creatures || !s.traits) return null;
+  if (s.version === STATE_VERSION) return s;
+  if (s.version !== 1) return null;
+  const old = s.config || {};
+  const cfg = mergeConfig({
+    gridSize: s.n,
+    generationCap: old.generationCap ?? DEFAULT_CONFIG.generationCap,
+    placementCap: old.placementCap ?? DEFAULT_CONFIG.placementCap,
+    autoSkipPlacement: old.autoSkipPlacement ?? true,
+    disabledTraits: old.disabledTraits || [],
+  });
+  // Version 1 traits had fixed sizes; keep them as they were.
+  const fixedDelta = (name) => {
+    const oldDef = old.traits && old.traits[name];
+    if (oldDef && oldDef.delta !== undefined) return oldDef.delta;
+    return traitDelta(cfg.traits[name], cfg);
+  };
+  for (const colour of COLOURS) for (const t of s.traits[colour] || []) if (t.delta == null) t.delta = fixedDelta(t.name);
+  for (const p of s.pendingDna || []) if (p.delta == null) p.delta = fixedDelta(p.trait);
+  s.config = cfg;
+  s.version = STATE_VERSION;
+  return s;
 }
 
 function clearSavedGame() {
@@ -214,7 +256,9 @@ function buildNewGameScreen() {
   cap.onchange = () => {
     settings.cap = cap.checked;
     saveSettings();
+    applyRulesToMatch();
   };
+  $('#cap-desc').textContent = `End the match after ${clampCap(settings.generationCap)} generations. Change the number in Settings.`;
 }
 
 function buildSettingsScreen() {
@@ -253,6 +297,14 @@ function buildSettingsScreen() {
   };
   bindRuleToggle($('#no-aggressive-toggle'), 'noAggressive');
   bindRuleToggle($('#constant-spawn-toggle'), 'constantSpawning');
+  const capInput = $('#gen-cap-input');
+  capInput.value = clampCap(settings.generationCap);
+  capInput.onchange = () => {
+    settings.generationCap = clampCap(capInput.value);
+    capInput.value = settings.generationCap;
+    saveSettings();
+    applyRulesToMatch();
+  };
 }
 
 function setSpeed(sp) {
@@ -265,10 +317,12 @@ function setSpeed(sp) {
 // ---------------------------------------------------------------------------
 // Match
 
-function startMatch({ gridSize, cap, seed }) {
-  state = createGame({ config: { gridSize, generationCap: cap ? 100 : 0, ...ruleConfig() }, seed });
+function startMatch({ gridSize, seed }) {
+  tutorial = null;
+  state = createGame({ config: { gridSize, ...ruleConfig() }, seed });
   lastTraitAdded = null;
   lastSkips = [];
+  lastEvents = [];
   saveGame();
   enterMatch();
 }
@@ -385,7 +439,12 @@ function speedGroup(withSkip) {
 }
 
 function routePhase() {
+  if (tutorial) {
+    tutorialRoute();
+    return;
+  }
   hideModals();
+  $('#banner').classList.remove('coach');
   switch (state.phase) {
     case 'setup':
     case 'placement':
@@ -466,19 +525,24 @@ function confirmPlacement() {
 
 // -- DNA ---------------------------------------------------------------
 
-function dnaUI() {
+function dnaUI({ coach = '' } = {}) {
   renderTopBar();
   const choice = currentDnaChoice(state);
   setBanner(`${COLOUR_NAMES[choice.chooser]} chooses a trait`, { colour: choice.chooser, sub: `${state.pendingDna.length} DNA choice${state.pendingDna.length === 1 ? '' : 's'} pending` });
   setControls([]);
-  const m = openModal('modal-dna', dnaModalHtml(state, choice));
+  const m = openModal('modal-dna', dnaModalHtml(state, choice, { coach }));
   let picked = null;
   const confirm = m.querySelector('#dna-confirm');
+  const warning = m.querySelector('#dna-warning');
   for (const b of m.querySelectorAll('.circle-btn')) {
     b.onclick = () => {
       picked = b.dataset.colour;
       for (const o of m.querySelectorAll('.circle-btn')) o.classList.toggle('selected', o === b);
       confirm.disabled = false;
+      // Remind the chooser what a full colour would lose.
+      const drop = b.dataset.drop;
+      warning.hidden = !drop;
+      warning.textContent = drop || '';
       sound.play('tap');
     };
   }
@@ -529,7 +593,7 @@ function showEndModal() {
   const m = openModal('modal-end', endModalHtml(state));
   m.querySelector('[data-action="rematch"]').onclick = () => {
     closeModal('modal-end');
-    startMatch({ gridSize: state.n, cap: state.config.generationCap > 0 });
+    startMatch({ gridSize: state.n });
   };
   m.querySelector('[data-action="view-board"]').onclick = () => closeModal('modal-end');
   m.querySelector('[data-action="menu"]').onclick = () => {
@@ -606,6 +670,7 @@ async function submit(input) {
     playCtl = null;
   }
   lastTraitAdded = r.events.find((e) => e.type === 'traitAdded') || null;
+  lastEvents = r.events;
   if (state.phase === 'ended' && r.events.some((e) => e.type === 'ended')) sound.play('win');
   renderAll();
   routePhase();
@@ -662,6 +727,17 @@ function openPause() {
     helpReturn = 'screen-match';
     show('screen-help');
   };
+  if (tutorial) {
+    // The tutorial board is not a saved match: leaving it just returns to the menu.
+    const menuBtn = m.querySelector('[data-act="menu"]');
+    menuBtn.textContent = 'Exit tutorial';
+    menuBtn.onclick = () => {
+      closePause();
+      exitTutorial();
+    };
+    m.querySelector('[data-act="abandon"]').hidden = true;
+    return;
+  }
   m.querySelector('[data-act="menu"]').onclick = () => {
     closePause();
     show('screen-menu');
@@ -674,6 +750,109 @@ function openPause() {
     state = null;
     show('screen-menu');
   };
+}
+
+// ---------------------------------------------------------------------------
+// Tutorial: a fixed board on the real engine, with a coach under the board.
+
+function startTutorial() {
+  sound.unlock();
+  state = buildTutorialState();
+  tutorial = { step: 'welcome' };
+  lastTraitAdded = null;
+  lastSkips = [];
+  lastEvents = [];
+  enterMatch();
+}
+
+function exitTutorial() {
+  tutorial = null;
+  state = null;
+  hideModals();
+  $('#banner').classList.remove('coach');
+  show('screen-menu');
+}
+
+function coach(step, buttons) {
+  setBanner(step.title, { sub: step.text });
+  $('#banner').classList.add('coach');
+  setControls(buttons);
+}
+
+function tutorialRoute() {
+  hideModals();
+  const t = tutorial;
+  renderTopBar();
+  board.clearHighlights();
+  if (state.phase === 'ended') {
+    coach(COACH.ended, [button(COACH.ended.button, { cls: 'btn primary', onClick: exitTutorial })]);
+    return;
+  }
+  // Advance the lesson from what the engine just did.
+  if (t.step === 'place' && state.phase === 'placement' && state.turn === 'blue') t.step = 'bluePlaces';
+  else if (t.step === 'bluePlaces' && (state.phase === 'dna' || state.phase === 'between')) t.step = 'moved';
+  else if (t.step === 'dna' && state.phase === 'between') t.step = 'ageing';
+  else if (t.step === 'ageing' && state.phase === 'placement') t.step = 'death';
+
+  switch (t.step) {
+    case 'welcome':
+      coach(COACH.welcome, [button(COACH.welcome.button, { cls: 'btn primary', onClick: () => { t.step = 'place'; tutorialRoute(); } })]);
+      break;
+    case 'place':
+      selectedCell = null;
+      legalKeys = new Set([TUTORIAL_RED_CELL.y * state.n + TUTORIAL_RED_CELL.x]);
+      board.setLegal([TUTORIAL_RED_CELL], 'red');
+      coach(COACH.place, [button('Confirm placement', { cls: 'btn red', id: 'btn-confirm', disabled: true, onClick: confirmPlacement })]);
+      break;
+    case 'bluePlaces':
+      coach(COACH.bluePlaces, []);
+      setTimeout(() => {
+        if (tutorial && state && state.phase === 'placement' && state.turn === 'blue' && !busy) submit({ type: 'place', cell: TUTORIAL_BLUE_CELL });
+      }, 900 / settings.speed);
+      break;
+    case 'moved': {
+      const step = COACH.moved(summariseResolution(lastEvents));
+      coach(step, [button(step.button, { cls: 'btn primary', onClick: () => { t.step = state.phase === 'dna' ? 'dna' : 'ageing'; tutorialRoute(); } })]);
+      break;
+    }
+    case 'dna':
+      if (state.phase === 'dna') {
+        dnaUI({ coach: COACH.dna(currentDnaChoice(state)) });
+        $('#banner').classList.add('coach');
+      } else {
+        t.step = 'ageing';
+        tutorialRoute();
+      }
+      break;
+    case 'ageing': {
+      const dying = Object.values(state.creatures).filter((c) => c.age >= state.config.deathAge).length;
+      const step = COACH.ageing(dying);
+      coach(step, [button(step.button, { cls: 'btn primary', onClick: () => submit({ type: 'nextGeneration' }) })]);
+      break;
+    }
+    case 'death':
+      coach(COACH.death, [button(COACH.death.button, { cls: 'btn primary', onClick: () => { t.step = 'winning'; tutorialRoute(); } })]);
+      break;
+    default:
+      coach(COACH.winning, [
+        button(COACH.winning.button, { cls: 'btn primary', onClick: exitTutorial }),
+        button('Keep playing this board', { cls: 'btn', onClick: keepPlayingTutorial }),
+      ]);
+  }
+}
+
+async function keepPlayingTutorial() {
+  const saved = loadGame();
+  if (saved && saved.phase !== 'ended') {
+    const ok = await confirmDialog('Replace your saved match?', 'Continuing from the tutorial board will replace the match in progress.', 'Replace');
+    if (!ok) return;
+  }
+  tutorial = null;
+  state = { ...state, config: { ...state.config, ...ruleConfig() } };
+  delete state.tutorial;
+  saveGame();
+  renderAll();
+  routePhase();
 }
 
 function closePause() {
@@ -706,14 +885,19 @@ function init() {
   $('#btn-continue').onclick = () => {
     const saved = loadGame();
     if (!saved) return toast('No saved match');
+    tutorial = null;
     state = saved;
     lastTraitAdded = null;
+    lastSkips = [];
+    lastEvents = [];
+    saveGame(); // persists any migration from an older save format
     enterMatch();
   };
   $('[data-action="help"]').onclick = () => {
     helpReturn = 'screen-menu';
     show('screen-help');
   };
+  $('[data-action="tutorial"]').onclick = startTutorial;
   $('[data-action="settings"]').onclick = () => {
     buildSettingsScreen();
     show('screen-settings');
@@ -735,7 +919,7 @@ function init() {
     }
     const seed = $('#seed-input').value.trim();
     sound.unlock();
-    startMatch({ gridSize: settings.gridSize, cap: settings.cap, seed: seed || undefined });
+    startMatch({ gridSize: settings.gridSize, seed: seed || undefined });
   };
 
   // Match

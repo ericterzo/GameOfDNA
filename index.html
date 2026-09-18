@@ -29,6 +29,7 @@
       <p class="tagline">Two players. One board. Six generations to live.</p>
       <button class="btn primary" data-action="new">New Game (Local)</button>
       <button class="btn" id="btn-continue" hidden>Continue</button>
+      <button class="btn" data-action="tutorial">Tutorial</button>
       <button class="btn" data-action="help">How to Play</button>
       <button class="btn" data-action="settings">Settings</button>
       <div class="version">Pass-and-play · v0.1</div>
@@ -47,7 +48,7 @@
         <div class="chips" id="grid-chips"></div>
       </div>
       <label class="row-toggle">
-        <span>Generation cap<br><span class="desc">End the match after 100 generations</span></span>
+        <span>Generation cap<br><span class="desc" id="cap-desc">End the match after 25 generations</span></span>
         <input type="checkbox" class="switch" id="cap-toggle" checked>
       </label>
       <details class="plain">
@@ -95,6 +96,10 @@
         <input type="checkbox" class="switch" id="auto-toggle">
       </label>
       <div class="field-label" style="margin-top:8px">Rules</div>
+      <label class="row-toggle">
+        <span>Generation cap<br><span class="desc">The match ends after this many generations, when the cap is switched on for the match.</span></span>
+        <input type="number" id="gen-cap-input" min="1" max="999" step="1" inputmode="numeric">
+      </label>
       <label class="row-toggle">
         <span>Remove Aggressive trait<br><span class="desc">Aggressive is never drawn from DNA. Traits already assigned stay until pushed out.</span></span>
         <input type="checkbox" class="switch" id="no-aggressive-toggle">

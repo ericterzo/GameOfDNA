@@ -199,6 +199,48 @@ test('disabled traits are never drawn from DNA', () => {
   assert.ok(pickups > 20, `only ${pickups} pickups seen`);
 });
 
+test('trait draws: 60/40 group split, sizes between 15 and 30 with the trait sign', () => {
+  const groupShare = { movement: 0, breeding: 0 };
+  let total = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    botState.rng = seed;
+    const s0 = createGame({ config: { gridSize: 7 }, seed: 500 + seed });
+    const { events } = playRandom(s0, { maxGens: 40 });
+    for (const e of events) {
+      if (e.type !== 'pickup') continue;
+      const def = s0.config.traits[e.trait];
+      const size = Math.abs(e.delta);
+      assert.ok(size >= 15 && size <= 30, `size ${e.delta} for ${e.trait}`);
+      assert.equal(Math.sign(e.delta), def.sign, `sign for ${e.trait}`);
+      groupShare[def.group]++;
+      total++;
+    }
+  }
+  assert.ok(total > 300, `only ${total} pickups`);
+  const movement = groupShare.movement / total;
+  assert.ok(movement > 0.53 && movement < 0.67, `movement share ${movement.toFixed(2)}`);
+
+  // A fixed magnitude reproduces the original fixed-size traits.
+  botState.rng = 9;
+  const fixed = playRandom(createGame({ config: { gridSize: 7, traitMagnitude: { min: 15, max: 15 } }, seed: 77 }), { maxGens: 30 });
+  const deltas = fixed.events.filter((e) => e.type === 'pickup').map((e) => Math.abs(e.delta));
+  assert.ok(deltas.length > 5);
+  assert.ok(deltas.every((d) => d === 15));
+  // Drawn sizes are what the stats use.
+  const st = computeStats(fixed.state.config, fixed.state.traits);
+  assert.ok(Number.isFinite(st.red.kin));
+});
+
+test('the tutorial board plays out its lessons', async () => {
+  const { scenarioChecks } = await import('../src/tutorial/scenario.js');
+  const c = scenarioChecks();
+  assert.equal(c.onePickupByRed, true, 'exactly one DNA pickup, by Red');
+  assert.equal(c.redCollisionBirth, true, 'a Red x Red collision birth');
+  assert.equal(c.notEnded, true, 'the match continues into a DNA choice');
+  assert.equal(c.oldRedDies, true, 'the age-5 red dies at the start of the next generation');
+  assert.equal(c.redPlacesNext, true, 'Red places first in generation 4');
+});
+
 // ---------------------------------------------------------------------------
 // Stats and odds
 

@@ -2,7 +2,7 @@
 // CSS classes as the real board.
 
 import { DNA_SVG } from './board.js';
-import { DEFAULT_TRAITS } from '../engine/index.js';
+import { DEFAULT_TRAITS, DEFAULT_CONFIG } from '../engine/index.js';
 import { traitIcon, traitBlurb, traitEffect } from './traitInfo.js';
 
 // pieces: [{x, y, colour, age}], dna: [{x,y}], marks: [{x, y, cls}]
@@ -23,7 +23,7 @@ function fig(board, caption) {
   return `<div class="fig">${board}<div class="cap">${caption}</div></div>`;
 }
 
-const traitRows = Object.entries(DEFAULT_TRAITS).map(([name, def]) => `<tr><td>${traitIcon(name)} ${name}<span class="t-eff">${traitEffect(def)}</span></td><td>${traitBlurb(name)}</td></tr>`).join('');
+const traitRows = Object.entries(DEFAULT_TRAITS).map(([name, def]) => `<tr><td>${traitIcon(name)} ${name}<span class="t-eff">${traitEffect(def, { range: DEFAULT_CONFIG.traitMagnitude })}</span></td><td>${traitBlurb(name)}</td></tr>`).join('');
 
 export const HELP_HTML = `
 <div class="help">
@@ -33,7 +33,7 @@ export const HELP_HTML = `
   <h3>Winning</h3>
   <ul>
     <li><b>Board majority:</b> Red or Blue holds more than half of all cells. Hard win, checked at the end of every generation.</li>
-    <li><b>Full board</b> or <b>generation cap</b> (100): whoever has more creatures wins. A <b>hard win</b> if they also outnumber Purple, otherwise a <b>soft win</b>. Equal counts is a draw.</li>
+    <li><b>Full board</b> or <b>generation cap</b> (25 by default, editable in Settings): whoever has more creatures wins. A <b>hard win</b> if they also outnumber Purple, otherwise a <b>soft win</b>. Equal counts is a draw.</li>
     <li><b>Wipe-out:</b> a player with no creatures and no legal cell to place on loses immediately.</li>
   </ul>
 
@@ -86,7 +86,8 @@ export const HELP_HTML = `
 
   <h3>DNA and traits</h3>
   <p>A creature collects DNA by moving or being born onto it. The trait inside is revealed only then. If the collector is Red or Blue, that player chooses which colour receives it. If the collector is Purple, the player with <b>fewer creatures</b> chooses. Traits take effect from the next generation.</p>
-  <p>Each colour holds at most <b>10 traits</b>. When an eleventh arrives the oldest is pushed out, which can suddenly unbalance stats that had cancelled out. Opposite traits do not cancel each other; they simply add up.</p>
+  <p>The size of each trait is rolled when it is found, between <b>15 and 30</b>: you might find a Dominant +20 or a Cold -18. Movement traits (Social, Solitary, Bold, Timid, Restless, Focused) turn up 60% of the time, breeding traits 40%.</p>
+  <p>Each colour holds at most <b>10 traits</b>. When an eleventh arrives the oldest is pushed out, which can suddenly unbalance stats that had cancelled out. The choice window warns you which trait a full colour would lose. Opposite traits do not cancel each other; they simply add up.</p>
   ${fig(mini(2, { dna: [{ x: 0, y: 0 }], pieces: [{ x: 1, y: 1, colour: 'purple', age: 2 }] }), '<b>Aggressive on Purple.</b> When a player gives Aggressive to Purple it targets the <b>other</b> player\'s colour, and is listed as "Aggressive vs Red" or "vs Blue". Purple is never aggressive towards Purple.')}
   <table class="trait-table">${traitRows}</table>
 

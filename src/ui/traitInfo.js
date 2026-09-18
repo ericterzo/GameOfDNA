@@ -44,13 +44,20 @@ export function traitBlurb(name) {
   return (TRAIT_INFO[name] || {}).blurb || '';
 }
 
-// "Kin +15" style effect string for a trait definition.
-export function traitEffect(def, target) {
+export function fmtDelta(d) {
+  return `${d >= 0 ? '+' : ''}${d}`;
+}
+
+// "Kin +20" for a drawn instance, or "Kin +15 to +30" for the trait in general.
+export function traitEffect(def, { target, delta, range } = {}) {
   if (!def) return '';
-  const sign = def.delta >= 0 ? '+' : '';
   const stat = STAT_SHORT[def.stat] || def.stat;
   const tgt = target ? ` vs ${capitalise(target)}` : '';
-  return `${stat}${tgt} ${sign}${def.delta}`;
+  if (delta !== undefined && delta !== null) return `${stat}${tgt} ${fmtDelta(delta)}`;
+  if (def.delta !== undefined) return `${stat}${tgt} ${fmtDelta(def.delta)}`;
+  const sign = def.sign ?? 1;
+  const r = range || { min: 15, max: 30 };
+  return `${stat}${tgt} ${fmtDelta(sign * r.min)} to ${fmtDelta(sign * r.max)}`;
 }
 
 export function capitalise(s) {

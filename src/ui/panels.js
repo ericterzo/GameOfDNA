@@ -1,8 +1,8 @@
 // HTML builders for the trait panel, stats section, DNA choice modal and end
 // screen. Pure functions of the game state: they return markup strings.
 
-import { COLOURS, computeStats, movementShares, pairingOdds, aggressionAgainst, opponentOf } from '../engine/index.js';
-import { traitIcon, traitBlurb, traitEffect, capitalise, COLOUR_NAMES } from './traitInfo.js';
+import { COLOURS, computeStats, movementShares, pairingOdds, aggressionAgainst, opponentOf, traitDelta } from '../engine/index.js';
+import { traitIcon, traitBlurb, traitEffect, capitalise, fmtDelta, COLOUR_NAMES } from './traitInfo.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const pct = (v) => `${Math.round(v)}%`;
@@ -18,16 +18,21 @@ export function traitsHtml(state, highlight) {
           const isNew = highlight && highlight.colour === colour && i === list.length - 1;
           const cls = ['trait-line', full && i === 0 ? 'next-out' : '', isNew ? 'new' : ''].filter(Boolean).join(' ');
           const name = t.target ? `${t.name} vs ${COLOUR_NAMES[t.target]}` : t.name;
-          return `<div class="${cls}"><span class="icon">${traitIcon(t.name)}</span><span class="name">${esc(name)}</span><span class="eff">${esc(traitEffectShort(def))}</span></div>`;
+          return `<div class="${cls}"><span class="icon">${traitIcon(t.name)}</span><span class="name">${esc(name)}</span><span class="eff">${esc(fmtDelta(t.delta ?? traitDelta(def, state.config)))}</span></div>`;
         }).join('')
       : `<div class="trait-empty">No traits yet</div>`;
     return `<div class="trait-col ${colour}"><h4><span>${COLOUR_NAMES[colour]}</span><span class="slots">${list.length}/${slots}</span></h4>${lines}</div>`;
   }).join('');
 }
 
-function traitEffectShort(def) {
-  if (!def) return '';
-  return `${def.delta >= 0 ? '+' : ''}${def.delta}`;
+// The trait a colour would lose if it received one more, or null.
+export function traitPushedOut(state, colour) {
+  const list = state.traits[colour];
+  if (list.length < state.config.traitSlots) return null;
+  const t = list[0];
+  const def = state.config.traits[t.name];
+  const label = t.target ? `${t.name} vs ${COLOUR_NAMES[t.target]}` : t.name;
+  return { ...t, label, effect: traitEffect(def, { delta: t.delta ?? traitDelta(def, state.config) }) };
 }
 
 export function statsHtml(state) {
@@ -65,15 +70,16 @@ function sub(raw) {
 }
 
 // Preview line for the DNA modal: what changes for `colour` if it takes the trait.
-export function traitPreview(state, traitName, colour, chooser) {
+export function traitPreview(state, traitName, colour, chooser, delta) {
   const cfg = state.config;
   const def = cfg.traits[traitName];
   if (!def) return '';
   const before = computeStats(cfg, state.traits);
   const traits = structuredClone(state.traits);
-  const entry = { name: traitName };
+  const entry = { name: traitName, delta: delta ?? traitDelta(def, cfg) };
   if (def.stat === 'aggression' && colour === 'purple') entry.target = opponentOf(chooser);
   traits[colour].push(entry);
+  if (traits[colour].length > cfg.traitSlots) traits[colour].shift();
   const after = computeStats(cfg, traits);
   switch (def.stat) {
     case 'centre':
@@ -102,9 +108,10 @@ export function traitPreview(state, traitName, colour, chooser) {
   }
 }
 
-export function dnaModalHtml(state, choice) {
+export function dnaModalHtml(state, choice, { coach = '' } = {}) {
   const def = state.config.traits[choice.trait];
   const chooserName = COLOUR_NAMES[choice.chooser];
+  const delta = choice.delta ?? traitDelta(def, state.config);
   let explain = '';
   if (choice.collector === 'purple') {
     const why = choice.reason === 'tie'
@@ -118,25 +125,31 @@ export function dnaModalHtml(state, choice) {
     const label = colour === 'purple' && def.stat === 'aggression'
       ? `Purple: vs ${COLOUR_NAMES[opponentOf(choice.chooser)]}`
       : COLOUR_NAMES[colour];
-    return `<button class="circle-btn ${colour}" data-colour="${colour}" type="button">
+    const out = traitPushedOut(state, colour);
+    const drop = out ? `<span class="c-drop">Drops ${traitIcon(out.name)} ${esc(out.label)} ${esc(fmtDelta(out.delta ?? traitDelta(state.config.traits[out.name], state.config)))}</span>` : '';
+    const dropAttr = out ? ` data-drop="${esc(`${COLOUR_NAMES[colour]} already holds ${state.config.traitSlots} traits. Choosing ${COLOUR_NAMES[colour]} pushes out its oldest one: ${out.label} (${out.effect}).`)}"` : '';
+    return `<button class="circle-btn ${colour}" data-colour="${colour}"${dropAttr} type="button">
       <span class="circle"></span>
       <span class="c-label">${label}</span>
-      <span class="c-preview">${esc(traitPreview(state, choice.trait, colour, choice.chooser))}</span>
+      <span class="c-preview">${esc(traitPreview(state, choice.trait, colour, choice.chooser, delta))}</span>
+      ${drop}
     </button>`;
   }).join('');
   return `
     <h3 class="${choice.chooser}">${chooserName}'s choice</h3>
     ${explain}
+    ${coach ? `<p class="coach-note">${esc(coach)}</p>` : ''}
     <div class="trait-card">
       <div class="big-icon">${traitIcon(choice.trait)}</div>
       <div>
-        <div class="t-name">${esc(choice.trait)}</div>
-        <div class="t-effect">${esc(traitEffect(def))}</div>
+        <div class="t-name">${esc(choice.trait)} ${esc(fmtDelta(delta))}</div>
+        <div class="t-effect">${esc(traitEffect(def, { delta }))}</div>
         <div class="t-blurb">${esc(traitBlurb(choice.trait))}</div>
       </div>
     </div>
     <div class="field-label">Give this trait to</div>
     <div class="circles">${circles}</div>
+    <div class="dna-warning" id="dna-warning" hidden></div>
     <div class="actions"><button class="btn primary" id="dna-confirm" disabled>Confirm</button></div>
   `;
 }

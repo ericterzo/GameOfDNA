@@ -44,6 +44,8 @@ src/ui/app.js           Screens, settings, persistence, match flow
 src/ui/board.js         Board renderer and event animation
 src/ui/panels.js        Trait panel, stats table, DNA modal, end screen
 src/ui/help.js          How to Play content
+src/ui/tutorial.js      Tutorial coach text
+src/tutorial/scenario.js  Fixed tutorial board and seed (see scripts/find-tutorial-seed.js)
 src/ui/sound.js         Synthesised sound effects
 test/engine.test.js     Engine tests
 scripts/serve.js        Tiny static server for local testing
@@ -77,6 +79,10 @@ Where the spec left a choice open, the game currently does this. Each one is a c
 
 | Question | Choice |
 |---|---|
+| Generation cap | 25 by default, editable in Settings (`generationCap`, 0 for none) |
+| Trait sizes | Rolled per instance between 15 and 30 when the DNA is found (`traitMagnitude`) |
+| Trait draw | A group first, movement 60% / breeding 40% (`traitGroupWeights`), then a trait within the group by weight. Aggressive counts as a breeding trait |
+| Full trait slots | The DNA choice window shows which trait a full colour would push out |
 | DNA on the board | Four symbols; any collected during a generation are replaced on random free cells at its end (`dnaMin` / `dnaMax`) |
 | A player who cannot place | Skipped automatically, with a notice (`autoSkipPlacement`) |
 | Placement cap | Five creatures, or none with the "Constant spawning" setting (`placementCap: 0`) |

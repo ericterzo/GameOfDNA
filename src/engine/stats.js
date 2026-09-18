@@ -1,7 +1,7 @@
 // Stat computation: base values plus active trait modifiers, and the derived
 // percentages the rules and the UI both need.
 
-import { COLOURS } from './config.js';
+import { COLOURS, traitDelta } from './config.js';
 
 const floor0 = (v) => (v > 0 ? v : 0);
 
@@ -19,11 +19,12 @@ export function computeStats(config, traits) {
     for (const t of traits[colour] || []) {
       const def = config.traits[t.name];
       if (!def) continue;
+      const delta = t.delta ?? traitDelta(def, config);
       if (def.stat === 'aggression' && colour === 'purple') {
-        if (t.target === 'red') st.aggressionVsRed += def.delta;
-        else if (t.target === 'blue') st.aggressionVsBlue += def.delta;
+        if (t.target === 'red') st.aggressionVsRed += delta;
+        else if (t.target === 'blue') st.aggressionVsBlue += delta;
       } else {
-        st[def.stat] += def.delta;
+        st[def.stat] += delta;
       }
     }
     out[colour] = st;
