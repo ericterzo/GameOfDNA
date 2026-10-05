@@ -159,6 +159,7 @@ function onModel(gltf) {
   model.traverse(function (o) {
     if (o.isMesh) {
       o.castShadow = true; o.frustumCulled = false;
+      if (o.geometry && !o.geometry.getAttribute('normal')) o.geometry.computeVertexNormals();
       if (o.material) { o.material.metalness = Math.min(o.material.metalness == null ? 1 : o.material.metalness, 0.82); o.material.envMapIntensity = 1.15; o.material.needsUpdate = true; }
     }
   });
@@ -189,9 +190,11 @@ function onError(e) { ltEl.textContent = 'Failed to load model'; console.error(e
   }
 })();
 
-// download button
+// download button (hidden where the sandbox blocks downloads, e.g. hosted artifact)
 var dl = document.getElementById('dl');
-if (window.ROBOT_B64) {
+if (window.NO_DOWNLOAD) {
+  dl.style.display = 'none';
+} else if (window.ROBOT_B64) {
   dl.addEventListener('click', function (e) {
     e.preventDefault();
     var bin = atob(window.ROBOT_B64), n = bin.length, buf = new Uint8Array(n);
