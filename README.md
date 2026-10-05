@@ -32,6 +32,14 @@ npm test
 
 Runs the engine tests with Node's built-in test runner: rule checks, the spec's worked examples, determinism, and random full games with invariant checks.
 
+## Bonus: 3D robot walk demo
+
+Separate from the game, [`demo/`](demo/) holds a three.js scene where a 3D robot
+— rigged from a static scan into a **VRM humanoid** with a hand-authored walk
+cycle — paces through a spaceship corridor. The rigged `demo/robot.vrm` is
+downloadable and works in any VRM or glTF viewer. Serve the repo and open
+`/demo/` (see [`demo/README.md`](demo/README.md) for details).
+
 ## Layout
 
 ```
