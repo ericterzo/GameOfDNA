@@ -36,9 +36,11 @@ Runs the engine tests with Node's built-in test runner: rule checks, the spec's 
 
 Separate from the game, [`demo/`](demo/) holds a three.js scene where a 3D robot
 — rigged from a static scan into a **VRM humanoid** with a hand-authored walk
-cycle — paces through a spaceship corridor. The rigged `demo/robot.vrm` is
-downloadable and works in any VRM or glTF viewer. Serve the repo and open
-`/demo/` (see [`demo/README.md`](demo/README.md) for details).
+cycle — walks through a spaceship corridor. You can **drive it** with WASD /
+arrow keys or an on-screen joystick. `demo/standalone.html` is a single
+double-clickable file (everything embedded, no server needed); the served
+`demo/index.html` is smaller. The rigged `demo/robot.vrm` is downloadable and
+works in any VRM or glTF viewer. See [`demo/README.md`](demo/README.md).
 
 ## Layout
 
